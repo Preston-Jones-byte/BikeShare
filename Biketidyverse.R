@@ -45,5 +45,5 @@ kaggle_submission <- bike_predictions %>%
   mutate(datetime=as.character(format(datetime))) #needed for right format to Kaggle
 
 ## Write out the file
-vroom_write(x=kaggle_submission, file= "./BikeShare", delim=",") 
+vroom_write(x=kaggle_submission, file= "./LinearPreds.csv", delim=",") 
               #change the file name to the git hub repository
