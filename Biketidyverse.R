@@ -1,43 +1,83 @@
+
+# Libraries ---------------------------------------------------------------
+
 library(tidyverse)
 library(tidymodels)
 library(vroom)
-library(ggplot2)
-library(patchwork)
+
 setwd("//wsl.localhost/Ubuntu/home/fidgetcase/stat348/BikeShare")
+
+# Read in Data ------------------------------------------------------------
+
 
 test <- vroom("test.csv")
 train <- vroom("train.csv")
 
+
+
+# EDA ---------------------------------------------------------------------
+
+
 dplyr::glimpse(train) 
-skimr::skim(test)
-DataExplorer::plot_correlation(train) 
-DataExplorer::plot_bar(train)
+#skimr::skim(test)
+# DataExplorer::plot_correlation(train) 
+# DataExplorer::plot_bar(train)
+
+## Question 1 -------------------------------------------------------------
+
+train = subset(train, select = -c(casual, registered))
+train$count = log(train$count)
+
+# Recipe  -----------------------------------------------------------------
+
+## Question 2 -------------------------------------------------------------
+
+my_recipe <- recipe(count ~ . , data=train) %>% # Set model formula and dataset
+  step_mutate(weather = recode(weather, `4` = 3)) %>% # Recodes 4 to 3
+  step_mutate(weather = as.factor(weather)) %>% # Weather becomes a factor
+  #step_mutate(hour = hour(datetime)) %>%
+  step_time(datetime, features = c("hour")) %>% # We have a new time variable
+  step_mutate(season = as.factor(season)) %>% # Season is a factor
+  step_mutate(workingday = as.factor(workingday)) %>%
+  step_mutate(datetime_hour = as.factor(datetime_hour)) %>%
+  step_dummy(all_nominal_predictors()) 
+  
+  
+prepped_recipe <- prep(my_recipe) # Sets up the preprocessing 
+bake(prepped_recipe, new_data= train)
 
 
-plot1 <- ggplot(data = train, aes(x = atemp, y = temp)) +
-  geom_point()
+# Example Code ------------------------------------------------------------
 
-plot2 <- ggplot(data = train, aes(x = weather, y = count)) +
-  geom_col() 
 
-plot3 <- ggplot(data = train, aes(x = holiday)) +
-  geom_bar()
 
-plot4 <- ggplot(data = train, aes(x = atemp, y = weather)) +
-  geom_col() 
 
-(plot1 + plot2) / (plot3 + plot4)
+# Workflow ----------------------------------------------------------------
+## Question 3 -------------------------------------------------------------
 
-my_linear_model <- linear_reg() %>% #Type of model
-  set_engine("lm") %>% # Engine = What R function to use
-  set_mode("regression") %>% # Regression just means quantitative response
-  fit(formula=count ~ temp + workingday + windspeed, data=train)
+## Define a Recipe as before
+bike_recipe <- my_recipe
 
-## Generate Predictions Using Linear Model9
-bike_predictions <- predict(my_linear_model,
-                            new_data=test)
+## Define a Model
+lin_model <- linear_reg() %>%
+set_engine("lm") %>%
+set_mode("regression")
 
-kaggle_submission <- bike_predictions %>%
+## Combine into a Workflow and fit
+bike_workflow <- workflow() %>%
+add_recipe(bike_recipe) %>%
+add_model(lin_model) %>%
+fit(data=train)
+
+## Run all the steps on test data
+lin_preds <- exp(predict(bike_workflow, new_data = test))
+
+
+
+# Kaggle_submission -------------------------------------------------------
+
+
+kaggle_submission <- lin_preds %>%
   bind_cols(., test) %>% #Bind predictions with test data
   select(datetime, .pred) %>% #Just keep datetime and prediction variables
   rename(count=.pred) %>% #rename pred to count (for submission to Kaggle)
@@ -45,5 +85,5 @@ kaggle_submission <- bike_predictions %>%
   mutate(datetime=as.character(format(datetime))) #needed for right format to Kaggle
 
 ## Write out the file
-vroom_write(x=kaggle_submission, file= "./LinearPreds.csv", delim=",") 
+vroom_write(x=kaggle_submission, file= "Workflowhw6.csv", delim=",") 
               #change the file name to the git hub repository
