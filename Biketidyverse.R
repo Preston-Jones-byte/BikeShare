@@ -53,19 +53,49 @@ bake(prepped_recipe, new_data= train)
 
 # Penalized Regression ------------------------------------------------------------
 
-## Define a Recipe as before
-
-preg_model <- linear_reg(penalty=.01, mixture=.01) %>% #Set model and tuning
+reg_model <- linear_reg(penalty=tune(),
+                        mixture=tune()) %>% #Set model and tuning
   set_engine("glmnet") # Function to fit in R
 
+## Set Workflow
 preg_wf <- workflow() %>%
-  add_recipe(my_recipe) %>%
-  add_model(preg_model) %>%
-  fit(data=train)
+add_recipe(my_recipe) %>%
+add_model(reg_model)
 
-lin_preds <- exp(predict(preg_wf, new_data=test))
+## Grid of values to tune over
+grid_of_tuning_params <- grid_regular(penalty(),
+                                      mixture(),
+                                      levels = 5) ## L^2 total tuning possibilities
+
+## Split data for CV
+folds <- vfold_cv(train, v = 5, repeats=1)
 
 
+## Run the CV
+CV_results <- preg_wf %>%
+tune_grid(resamples=folds,
+          grid=grid_of_tuning_params,
+          metrics=metric_set(rmse, mae, rsq)) #Or leave metrics NULL
+
+## Plot Results (example)
+collect_metrics(CV_results) %>% # Gathers metrics into DF
+  filter(.metric=="rmse") %>%
+ggplot(data=., aes(x=penalty, y=mean, color=factor(mixture))) +
+geom_line()
+
+## Find Best Tuning Parameters
+bestTune <- CV_results %>%
+select_best("rmse")
+
+## Finalize the Workflow & fit it
+final_wf <-
+preg_wf %>%
+finalize_workflow(bestTune) %>%
+fit(data=train)
+
+## Predict
+final_wf %>%
+predict(new_data = test)
 
 # Kaggle_submission -------------------------------------------------------
 
@@ -78,5 +108,5 @@ kaggle_submission <- lin_preds %>%
   mutate(datetime=as.character(format(datetime))) #needed for right format to Kaggle
 
 ## Write out the file
-vroom_write(x=kaggle_submission, file= "preghw7.csv", delim=",") 
+vroom_write(x=kaggle_submission, file= "penilizedhw8.csv", delim=",") 
               #change the file name to the git hub repository
