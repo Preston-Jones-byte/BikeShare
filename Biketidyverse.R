@@ -40,37 +40,30 @@ my_recipe <- recipe(count ~ . , data=train) %>% # Set model formula and dataset
   step_mutate(season = as.factor(season)) %>% # Season is a factor
   step_mutate(workingday = as.factor(workingday)) %>%
   step_mutate(datetime_hour = as.factor(datetime_hour)) %>%
-  step_dummy(all_nominal_predictors()) 
+  step_dummy(all_nominal_predictors()) %>%
+  step_normalize(all_numeric_predictors()) %>%
+  step_rm(datetime)
   
   
 prepped_recipe <- prep(my_recipe) # Sets up the preprocessing 
 bake(prepped_recipe, new_data= train)
 
 
-# Example Code ------------------------------------------------------------
 
 
-
-
-# Workflow ----------------------------------------------------------------
-## Question 3 -------------------------------------------------------------
+# Penalized Regression ------------------------------------------------------------
 
 ## Define a Recipe as before
-bike_recipe <- my_recipe
 
-## Define a Model
-lin_model <- linear_reg() %>%
-set_engine("lm") %>%
-set_mode("regression")
+preg_model <- linear_reg(penalty=.01, mixture=.01) %>% #Set model and tuning
+  set_engine("glmnet") # Function to fit in R
 
-## Combine into a Workflow and fit
-bike_workflow <- workflow() %>%
-add_recipe(bike_recipe) %>%
-add_model(lin_model) %>%
-fit(data=train)
+preg_wf <- workflow() %>%
+  add_recipe(my_recipe) %>%
+  add_model(preg_model) %>%
+  fit(data=train)
 
-## Run all the steps on test data
-lin_preds <- exp(predict(bike_workflow, new_data = test))
+lin_preds <- exp(predict(preg_wf, new_data=test))
 
 
 
@@ -85,5 +78,5 @@ kaggle_submission <- lin_preds %>%
   mutate(datetime=as.character(format(datetime))) #needed for right format to Kaggle
 
 ## Write out the file
-vroom_write(x=kaggle_submission, file= "Workflowhw6.csv", delim=",") 
+vroom_write(x=kaggle_submission, file= "preghw7.csv", delim=",") 
               #change the file name to the git hub repository
