@@ -4,6 +4,7 @@
 library(tidyverse)
 library(tidymodels)
 library(vroom)
+library(rpart)
 
 setwd("//wsl.localhost/Ubuntu/home/fidgetcase/stat348/BikeShare")
 
@@ -51,62 +52,62 @@ bake(prepped_recipe, new_data= train)
 
 
 
-# Penalized Regression ------------------------------------------------------------
+# Decision Tree  ------------------------------------------------------------
 
-reg_model <- linear_reg(penalty=tune(),
-                        mixture=tune()) %>% #Set model and tuning
-  set_engine("glmnet") # Function to fit in R
+my_mod <- decision_tree(tree_depth = tune(),
+                        cost_complexity = tune(),
+                        min_n=tune()) |> 
+  set_engine("rpart") |> 
+  set_mode("regression")
 
 ## Set Workflow
 preg_wf <- workflow() %>%
-add_recipe(my_recipe) %>%
-add_model(reg_model)
+  add_recipe(my_recipe) %>%
+  add_model(my_mod)
 
 ## Grid of values to tune over
-grid_of_tuning_params <- grid_regular(penalty(),
-                                      mixture(),
-                                      levels = 5) ## L^2 total tuning possibilities
+grid_of_tuning_params <- grid_regular(tree_depth(),
+                                      min_n(),
+                                      cost_complexity(),
+                                      levels = 10) ## L^2 total tuning possibilities
 
 ## Split data for CV
-folds <- vfold_cv(train, v = 5, repeats=1)
+folds <- vfold_cv(train, v = 10, repeats=1)
 
 
 ## Run the CV
 CV_results <- preg_wf %>%
-tune_grid(resamples=folds,
+          tune_grid(resamples=folds,
           grid=grid_of_tuning_params,
           metrics=metric_set(rmse, mae, rsq)) #Or leave metrics NULL
 
-## Plot Results (example)
-collect_metrics(CV_results) %>% # Gathers metrics into DF
-  filter(.metric=="rmse") %>%
-ggplot(data=., aes(x=penalty, y=mean, color=factor(mixture))) +
-geom_line()
+
 
 ## Find Best Tuning Parameters
 bestTune <- CV_results %>%
-select_best("rmse")
+  select_best(metric="rmse")
 
 ## Finalize the Workflow & fit it
 final_wf <-
-preg_wf %>%
-finalize_workflow(bestTune) %>%
-fit(data=train)
+  preg_wf %>%
+  finalize_workflow(bestTune) %>%
+  fit(data=train)
 
 ## Predict
-final_wf %>%
-predict(new_data = test)
+x <- final_wf %>%
+  predict(new_data = test)
 
 # Kaggle_submission -------------------------------------------------------
 
 
-kaggle_submission <- lin_preds %>%
+kaggle_submission <- x %>%
   bind_cols(., test) %>% #Bind predictions with test data
   select(datetime, .pred) %>% #Just keep datetime and prediction variables
   rename(count=.pred) %>% #rename pred to count (for submission to Kaggle)
-  mutate(count=pmax(0, count)) %>% #pointwise max of (0, prediction)
+  mutate(count=pmax(0, count), 
+         count = exp(count)) %>% #pointwise max of (0, prediction)
   mutate(datetime=as.character(format(datetime))) #needed for right format to Kaggle
 
 ## Write out the file
-vroom_write(x=kaggle_submission, file= "penilizedhw8.csv", delim=",") 
+vroom_write(x=kaggle_submission, file= "regressiontreehw9.csv", delim=",") 
               #change the file name to the git hub repository
